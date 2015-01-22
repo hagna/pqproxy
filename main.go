@@ -15,12 +15,19 @@ import (
 var DB *leveldb.DB
 
 type Mitm struct {
+/* 
+psql destination is the command line output of psql
+psql source is postgres server (we could omit this?)
+
+postgres source is psql client (and this?)
+postgres destination is the postgres server
+*/
 	name string
 	src net.Conn
 	dst net.Conn
 }
 
-// Write to dst
+// Write to dst src -> dst
 func (m Mitm) Write(b []byte) (n int, err error) {
 	n, err = m.dst.Write(b)
 	Debug(m.name, "src -> dst")
@@ -31,7 +38,7 @@ func (m Mitm) Write(b []byte) (n int, err error) {
 	return m.w.Write(<-m.write)*/
 }
 
-// Read from dst
+// Read from dst src <- dst
 func (m Mitm) Read(b []byte) (n int, err error) {
 	n, err = m.dst.Read(b)
 	Debug(m.name, "src <- dst")

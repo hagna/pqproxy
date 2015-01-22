@@ -15,14 +15,15 @@ import (
 var DB *leveldb.DB
 
 type Mitm struct {
-	client net.Conn
-	server net.Conn
+	name string
+	src net.Conn
+	dst net.Conn
 }
 
-// Write to server
+// Write to dst
 func (m Mitm) Write(b []byte) (n int, err error) {
-	n, err = m.server.Write(b)
-	Debug("Client -> Server")
+	n, err = m.dst.Write(b)
+	Debug(m.name, "src -> dst")
 	spew.Dump(b[:n])
 	Debug("Write finished")
 	return
@@ -30,10 +31,10 @@ func (m Mitm) Write(b []byte) (n int, err error) {
 	return m.w.Write(<-m.write)*/
 }
 
-// Read from server
+// Read from dst
 func (m Mitm) Read(b []byte) (n int, err error) {
-	n, err = m.server.Read(b)
-	Debug("Client <- Server")
+	n, err = m.dst.Read(b)
+	Debug(m.name, "src <- dst")
 	spew.Dump(b[:n])
 	Debug("Read finished")
 	return
@@ -54,7 +55,7 @@ func (m Mitm) events() {
 			spew.Dump(tosrv)
 			k = tosrv
 			if dat, err := DB.Get(k, nil); err == nil {
-				Debug("found key in cache")
+				Debug("found i in cache")
 				spew.Dump(k)
 				spew.Dump(dat)
 			} else {
@@ -137,10 +138,11 @@ func main() {
 			if *postgres {
 				sconn = postgreshandshake(conn, sconn)
 			}
-			mitm := Mitm{conn, sconn}
+			writeserver := Mitm{"postgres", conn, sconn}
+			writeclient := Mitm{"psql", sconn, conn}
 			Debug("got connection")
-			go io.Copy(conn, mitm)
-			go io.Copy(mitm, conn)
+			go io.Copy(writeclient, writeserver)
+			go io.Copy(writeserver, writeclient)
 			Debug("END")
 
 		}

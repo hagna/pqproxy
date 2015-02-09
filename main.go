@@ -8,82 +8,13 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"io"
 	"log"
+	"os/exec"
+	"bytes"
 	"net"
 	//	"code.google.com/p/leveldb-go/leveldb/db"
 )
 
 var DB *leveldb.DB
-
-type Mitm struct {
-/* 
-psql destination is the command line output of psql
-psql source is postgres server (we could omit this?)
-
-postgres source is psql client (and this?)
-postgres destination is the postgres server
-*/
-	name string
-	src net.Conn
-	dst net.Conn
-}
-
-// Write to dst src -> dst
-func (m Mitm) Write(b []byte) (n int, err error) {
-	n, err = m.dst.Write(b)
-	Debug(m.name, "src -> dst")
-	spew.Dump(b[:n])
-	Debug("Write finished")
-	return
-	/*m.write <- b
-	return m.w.Write(<-m.write)*/
-}
-
-// Read from dst src <- dst
-func (m Mitm) Read(b []byte) (n int, err error) {
-	n, err = m.dst.Read(b)
-	Debug(m.name, "src <- dst")
-	spew.Dump(b[:n])
-	Debug("Read finished")
-	return
-	/*n, err = m.r.Read(b)
-	m.read <- b[:n]
-	b = <-m.read
-	n = len(b)
-	return n, err*/
-}
-
-/*
-func (m Mitm) events() {
-	for {
-		var k, v []byte
-		select {
-		case tosrv := <-m.write:
-			Debug("Client -> Server")
-			spew.Dump(tosrv)
-			k = tosrv
-			if dat, err := DB.Get(k, nil); err == nil {
-				Debug("found i in cache")
-				spew.Dump(k)
-				spew.Dump(dat)
-			} else {
-				Debug("cache miss")
-				m.write <- tosrv
-			}
-
-		case fromsrv := <-m.read:
-
-			v = fromsrv
-			m.read <- fromsrv
-			Debug(DB)
-			err := DB.Set(k, v, nil)
-			if err != nil {
-				Debug(err)
-			}
-			Debug("Read finished")
-		}
-	}
-}
-*/
 
 // openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days XXX
 
@@ -91,6 +22,81 @@ var ep = flag.String("ep", ":5433", "endpoint of server")
 var port = flag.String("port", ":5432", "port on which to pose as server")
 var postgres = flag.Bool("postgres", false, "do the postgres handshake for SSL server and plain text client")
 var dbname = flag.String("dbname", "", "name of leveldb for storage")
+var cmd = flag.String("cmd", "", "stdin of cmd gets the bytes to read and stdout gives the bytes to write to postgres server")
+
+type Mitm struct {
+/* 
+psql destination is the command line output of psql
+psql source is postgres server 
+
+postgres source is psql client 
+postgres destination is the postgres server
+*/
+	name string
+	src net.Conn
+	dst net.Conn
+}
+
+
+func shell(b *[]byte) []byte {
+	cmd := exec.Command(*cmd)
+	cmd.Stdin = bytes.NewReader(*b)
+	res, err := cmd.CombinedOutput()
+	if err != nil {
+		Debug(string(res))
+		log.Println(err)
+	}
+	return res
+}
+
+// Write to dst src -> dst
+func (m Mitm) Write(b []byte) (n int, err error) {
+	if m.name == "psql" {
+		Debug("This was sent by the postgres server and we will write it to the client")
+	} else {
+		Debug("This was sent by the postgres client and we will write it to the postgres server")
+	}
+	spew.Dump(b)
+	// psql client send stuff to postgres server
+	if m.name == "psql" && *cmd != "" {
+		res := shell(&b)
+		if len(res) != 0 {
+			n, err = m.dst.Write(res)
+			b = res
+			return
+		}
+	}  
+	n, err = m.dst.Write(b)
+
+
+	Debug("Write finished")
+	return
+}
+
+// Read from dst src <- dst
+func (m Mitm) Read(b []byte) (n int, err error) {
+	n, err = m.dst.Read(b)
+	if m.name == "psql" && *cmd != "" {
+		in := b[:n]
+		res := shell(&in)
+		if len(res) != 0 {
+			l, e := m.dst.Write(res)
+			Debug("Wrote", l, e)
+			spew.Dump(res[:l])
+			n = 0
+			b = []byte{}
+		}
+	} 
+	if m.name == "psql" {
+		Debug("We read this from the client")
+	} else {
+		Debug("We read this from the server")
+	}
+	spew.Dump(b[:n])
+	Debug("Read finished")
+
+	return
+}
 
 func postgreshandshake(client, server net.Conn) net.Conn {
 	cb := [1024]byte{}

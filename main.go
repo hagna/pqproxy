@@ -38,8 +38,9 @@ postgres destination is the postgres server
 }
 
 
-func shell(b *[]byte) []byte {
-	cmd := exec.Command(*cmd)
+func shell(b *[]byte, name string) []byte {
+	cmd := exec.Command(*cmd, name)
+	Debug("shell", cmd)
 	cmd.Stdin = bytes.NewReader(*b)
 	res, err := cmd.CombinedOutput()
 	if err != nil {
@@ -56,16 +57,19 @@ func (m Mitm) Write(b []byte) (n int, err error) {
 	} else {
 		Debug("This was sent by the postgres client and we will write it to the postgres server")
 	}
-	spew.Dump(b)
+
 	// psql client send stuff to postgres server
-	if m.name == "psql" && *cmd != "" {
-		res := shell(&b)
+	if m.name == "postgres" && *cmd != "" {
+		res := shell(&b, "Write")
 		if len(res) != 0 {
-			n, err = m.dst.Write(res)
-			b = res
+			n = len(b)  // make the caller think we wrote it all
+			_, err = m.dst.Write(res)
+			Debug("We wrote this instead though")
+			spew.Dump(res)
 			return
 		}
 	}  
+	spew.Dump(b)
 	n, err = m.dst.Write(b)
 
 
@@ -76,17 +80,16 @@ func (m Mitm) Write(b []byte) (n int, err error) {
 // Read from dst src <- dst
 func (m Mitm) Read(b []byte) (n int, err error) {
 	n, err = m.dst.Read(b)
-	if m.name == "psql" && *cmd != "" {
+	/*if m.name == "psql" && *cmd != "" {
 		in := b[:n]
-		res := shell(&in)
+		res := shell(&in, "Read")
 		if len(res) != 0 {
-			l, e := m.dst.Write(res)
-			Debug("Wrote", l, e)
-			spew.Dump(res[:l])
-			n = 0
+			Debug("replacing what we read from the client")
 			b = []byte{}
+			n = len(res)
+			b = res
 		}
-	} 
+	} */
 	if m.name == "psql" {
 		Debug("We read this from the client")
 	} else {

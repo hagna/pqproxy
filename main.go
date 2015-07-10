@@ -193,10 +193,10 @@ func main() {
 				log.Println("got signal", s)
 				break FOR
 			case conn := <-clientCh:
+				defer conn.Close()
 				go func(conn net.Conn) {
 					remotename := conn.RemoteAddr()
 					Info("connecting", remotename)
-					defer conn.Close()
 					sconn, err := net.Dial("tcp", *ep)
 					if err != nil {
 						Fatal(err)

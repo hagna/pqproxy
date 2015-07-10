@@ -2,9 +2,9 @@ package main
 
 import (
 	"bytes"
-    "fmt"
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -37,8 +37,8 @@ type Mitm struct {
 }
 
 func Usage() {
-    fmt.Printf("Usage: ./pqproxy -ssl -v 9 -dburl postgres://[user]:[pass]@[host][:port]/[database]\n\n")
-    flag.PrintDefaults()
+	fmt.Printf("Usage: ./pqproxy -ssl -v 9 -dburl postgres://[user]:[pass]@[host][:port]/[database]\n\n")
+	flag.PrintDefaults()
 }
 
 func shell(b *[]byte, name string) []byte {
@@ -144,13 +144,13 @@ func postgreshandshake(client, server net.Conn) net.Conn {
 }
 
 func main() {
-    flag.Usage = Usage
+	flag.Usage = Usage
 	flag.Parse()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, os.Kill)
-    clientCh := make(chan net.Conn)
-    exit := make(chan struct{})
+	clientCh := make(chan net.Conn)
+	exit := make(chan struct{})
 
 	if *dburl != "" {
 		p, err := url.Parse(*dburl)
@@ -162,65 +162,62 @@ func main() {
 			Fatal(err)
 		}
 	} else {
-        Fatal("try --help")
-    }
-
-    go func() {
-
-        ln, err := net.Listen("tcp", *port)
-        if err != nil {
-            Fatal(err)
-        }
-        for {
-            conn, err := ln.Accept()
-            if err != nil {
-                Debug("error", err)
-                continue
-            }
-            clientCh<-conn
-        }
-    }()
-
+		Fatal("try --help")
+	}
 
 	go func() {
-        defer func() {
-            exit <- struct{}{}
-        }()
 
-FOR:
+		ln, err := net.Listen("tcp", *port)
+		if err != nil {
+			Fatal(err)
+		}
 		for {
-            select {
-                case s := <-c:
-                    log.Println("got signal", s)
-                    break FOR
-                case conn := <-clientCh:
-                    go func(conn net.Conn) {
-                        remotename := conn.RemoteAddr()
-                        Info("connecting", remotename)
-                        defer conn.Close()
-                        sconn, err := net.Dial("tcp", *ep)
-                        if err != nil {
-                            Fatal(err)
-                        }
-                        defer sconn.Close()
-                        sconn = postgreshandshake(conn, sconn)
-                        defer sconn.Close()
+			conn, err := ln.Accept()
+			if err != nil {
+				Debug("error", err)
+				continue
+			}
+			clientCh <- conn
+		}
+	}()
 
-                        writeserver := Mitm{"postgres", conn, sconn}
-                        writeclient := Mitm{"psql", sconn, conn}
-                        Debug("got connection")
-                        go io.Copy(writeclient, writeserver)
-                        io.Copy(writeserver, writeclient)
-                        Info("end connection", remotename)
+	go func() {
+		defer func() {
+			exit <- struct{}{}
+		}()
 
-			        }(conn)
-                default:
-                    //non-blocking
-            }
+	FOR:
+		for {
+			select {
+			case s := <-c:
+				log.Println("got signal", s)
+				break FOR
+			case conn := <-clientCh:
+				go func(conn net.Conn) {
+					remotename := conn.RemoteAddr()
+					Info("connecting", remotename)
+					defer conn.Close()
+					sconn, err := net.Dial("tcp", *ep)
+					if err != nil {
+						Fatal(err)
+					}
+					defer sconn.Close()
+					sconn = postgreshandshake(conn, sconn)
+					defer sconn.Close()
 
-            
+					writeserver := Mitm{"postgres", conn, sconn}
+					writeclient := Mitm{"psql", sconn, conn}
+					Debug("got connection")
+					go io.Copy(writeclient, writeserver)
+					io.Copy(writeserver, writeclient)
+					Info("end connection", remotename)
+
+				}(conn)
+			default:
+				//non-blocking
+			}
 
 		}
 	}()
-    <-exit
+	<-exit
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
 	"log"
 	"runtime"
 	"strings"
@@ -20,14 +21,6 @@ func _msg() string {
 		msg = fmt.Sprintf("./%s:%d ", fname, lineno)
 	}
 	return msg
-}
-
-func Error(i ...interface{}) {
-	msg := _msg()
-	var a []interface{}
-	a = append(a, msg)
-	a = append(a, i...)
-	log.Println(a...)
 }
 
 func Fatal(i ...interface{}) {
@@ -50,5 +43,20 @@ func Debugf(format string, i ...interface{}) {
 	if *verbose > 0 {
 		msg := _msg()
 		fmt.Printf(msg+format, i...)
+	}
+}
+
+func Info(i ...interface{}) {
+	msg := _msg()
+	fmt.Printf(msg)
+	fmt.Println(i...)
+
+}
+
+func DebugDump(i ...interface{}) {
+	if *verbose > 0 {
+		msg := _msg()
+		fmt.Printf(msg)
+		spew.Dump(i...)
 	}
 }

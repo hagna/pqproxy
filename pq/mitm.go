@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net"
 	"os/exec"
+	"log"
 )
 
 // the Man in the middle structure
@@ -26,7 +27,7 @@ func (m Mitm) Write(b []byte) (n int, err error) {
 		}
 	}
 	n, err = m.Conn.Write(b)
-	DebugDump(string(b[:n]))
+	DebugDump(b[:n])
 	return
 }
 
@@ -49,18 +50,36 @@ func (m Mitm) shell(b *[]byte, name string) []byte {
 	return res
 }
 
+func (m Mitm) Close() error {
+	var err error
+	if m.Conn != nil {
+		Debug("Close()", m.Conn.RemoteAddr())
+		err = m.Conn.Close()
+		if err != nil {
+			log.Println(err)
+		}
+	}
+	if m.Client != nil {
+		Debug("Close()", m.Client.RemoteAddr())
+		err = m.Client.Close()
+		if err != nil {
+			log.Println(err)
+		}
+	}
+	return err
+}
+
 // This is for making the cient think it is connected to a real postgres
 // server.
 func (m Mitm) startup() {
+	Debug("startup the client")
 	bc := [100]byte{}
 	client := m.Client
 	n, _ := client.Read(bc[:])
 	rb := readBuf(bc[:n])
 	rbi := rb.int32()
-	Debug("GOT rbi is", rbi, bc[:n])
 	//rb.next(1)
 	rbi = rb.int32()
-	Debug("GOT rbi is", rbi, bc[:n])
 	if rbi != 80877103 {
 		wb := writeBuf([]byte{})
 		wb.byte('R')
@@ -70,7 +89,6 @@ func (m Mitm) startup() {
 		Debug("sent AuthenticationCleartextPassowrd to client", wb, n, err)
 		bc2 := [100]byte{}
 		_, _ = client.Read(bc2[:])
-		Debug("got back", bc2)
 		wb = writeBuf([]byte{})
 		wb.byte('R')
 		wb.int32(8)
@@ -87,4 +105,5 @@ func (m Mitm) startup() {
 		client := m.Client
 		_, _ = client.Write([]byte{'N'})
 	}
+	log.Println("client startup complete")
 }

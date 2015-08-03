@@ -117,10 +117,12 @@ func main() {
 		fmt.Println("NOTICE: use this url", p)
 	}
 
-	_, err = exec.LookPath(*cmd)
-	if err != nil {
-		fmt.Println(err)
-		return
+	if *cmd != "" {
+		_, err = exec.LookPath(*cmd)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 	}
 
 	if *testquery != "" {
@@ -185,21 +187,24 @@ func main() {
 				log.Println("Signal", s)
 				break FOR
 			case conn := <-clientCh:
-				defer conn.Close()
-				go func(conn net.Conn) {
-					log.Println("got client conn", conn)
-					m := new(pq.Mitm)
-					m.Cmdname = cmd
-					m.Client = conn
-					_, err := pq.Open(*dburl, m)
-					if err != nil {
-						log.Println(err)
-						return
-					}
+				m := new(pq.Mitm)
+				m.Cmdname = cmd
+				m.Client = conn
+				_, err := pq.Open(*dburl, m)
+				if err != nil {
+					log.Println(err)
+					conn.Close()
+					continue
+				}
+				defer m.Close()
+				go func(m *pq.Mitm) {
+
 					go io.Copy(m, m.Client)
 					io.Copy(m.Client, m)
-
-				}(conn)
+					m.Close()
+				}(m)
+			
+	
 			default:
 				//non-blocking
 			}

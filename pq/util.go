@@ -1,4 +1,4 @@
-package main
+package pq
 
 import (
 	"flag"
@@ -29,6 +29,11 @@ func Fatal(i ...interface{}) {
 	a = append(a, msg)
 	a = append(a, i...)
 	log.Fatal(a...)
+}
+
+func Fatalf(format string, i ...interface{}) {
+	msg := _msg()
+	log.Fatalf(msg+format, i...)
 }
 
 func Debug(i ...interface{}) {

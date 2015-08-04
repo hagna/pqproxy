@@ -203,8 +203,7 @@ func main() {
 					io.Copy(m.Client, m)
 					m.Close()
 				}(m)
-			
-	
+
 			default:
 				//non-blocking
 			}

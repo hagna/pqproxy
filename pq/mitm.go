@@ -2,12 +2,16 @@ package pq
 
 import (
 	"bytes"
+	"flag"
+	"fmt"
+	"log"
 	"net"
 	"os/exec"
-	"log"
 )
 
-// the Man in the middle structure
+var server_version = flag.String("sver", "10.0.0", "Version number to pass to the client")
+
+// This is for intercepting writes to the postgres database and altering them in transit.
 type Mitm struct {
 	net.Conn          // this is the postgres server
 	Client   net.Conn // the postgres client psql or a webserver
@@ -32,8 +36,12 @@ func (m Mitm) Write(b []byte) (n int, err error) {
 }
 
 func (m Mitm) Read(b []byte) (n int, err error) {
-	Debug("READ")
 	n, err = m.Conn.Read(b)
+	if err != nil {
+		Debug(err)
+	} else {
+		Debug("READ", n)
+	}
 	DebugDump(b[:n])
 	return
 }
@@ -69,41 +77,117 @@ func (m Mitm) Close() error {
 	return err
 }
 
+func readN(client net.Conn, n int) {
+	Debug("reading", n, "from", client.RemoteAddr())
+	b := make([]byte, n)
+	n, e := client.Read(b[:])
+	if e != nil {
+		Debug(e)
+	}
+	DebugDump(b[:n])
+}
+
+func sendReady(client net.Conn) {
+	wb := writeBuf([]byte{})
+	wb.byte('Z')
+	wb.int32(5)
+	wb.byte('i')
+	n, err := client.Write([]byte(wb))
+	if err != nil {
+		Debug(err, "trying to send readyforquery")
+	} else {
+		Debug("sent readyforquery to client", wb, n, err)
+	}
+}
+
+func sendAuthPlain(client net.Conn) {
+	wb := writeBuf([]byte{})
+	wb.byte('R')
+	wb.int32(8)
+	wb.int32(3)
+	n, err := client.Write([]byte(wb))
+	if err != nil {
+		Debug(err, "trying to send AuthClearTextPassword")
+	} else {
+		Debug("sent AuthenticationCleartextPassowrd to client", wb, n, err)
+	}
+}
+
+func sendAuthMd5(client net.Conn) {
+	wb := writeBuf([]byte{})
+	wb.byte('R')
+	wb.int32(23)
+	wb.int32(5)
+	for i := 0; i < 4; i++ {
+		wb.byte('A')
+	}
+	n, err := client.Write([]byte(wb))
+	if err != nil {
+		Debug(err, "trying to send sendAuthMd5")
+	} else {
+		Debug("sent sendAuthMd5 to client", wb, n, err)
+	}
+}
+
+func sendAuthOk(client net.Conn) {
+	wb := writeBuf([]byte{})
+	wb.byte('R')
+	wb.int32(8)
+	wb.int32(0)
+	n, err := client.Write([]byte(wb))
+	if err != nil {
+		Debug(err, "trying to send AuthenticationOk")
+	} else {
+		Debug("sent AuthenticationOk to client", wb, n, err)
+	}
+}
+
+func addParam(wb *writeBuf, k, v string) {
+	l := len(k) + len(v) + 2 + 4
+	wb.int32(l)
+	wb.string(k)
+	wb.string(v)
+}
+
+func sendParameter(client net.Conn, k, v string) {
+	wb := writeBuf([]byte{})
+	wb.byte('S')
+	addParam(&wb, k, v)
+	_, err := client.Write([]byte(wb))
+	if err != nil {
+		Debug(err, "trying to send parameter", k, v)
+	} else {
+		Debug("sent Parameter", k, v)
+        DebugDump(wb)
+	}
+}
+
 // This is for making the cient think it is connected to a real postgres
 // server.
 func (m Mitm) startup() {
-	Debug("startup the client")
+	connstr := fmt.Sprintf("%s %s <-> %s %s", m.Client.RemoteAddr(), m.Client.LocalAddr(), m.Conn.LocalAddr(), m.Conn.RemoteAddr())
+	Debug("--------- BEGIN STARTUP for", connstr)
 	bc := [100]byte{}
 	client := m.Client
 	n, _ := client.Read(bc[:])
 	rb := readBuf(bc[:n])
 	rbi := rb.int32()
-	//rb.next(1)
 	rbi = rb.int32()
-	if rbi != 80877103 {
-		wb := writeBuf([]byte{})
-		wb.byte('R')
-		wb.int32(8)
-		wb.int32(3)
-		n, err := client.Write([]byte(wb))
-		Debug("sent AuthenticationCleartextPassowrd to client", wb, n, err)
-		bc2 := [100]byte{}
-		_, _ = client.Read(bc2[:])
-		wb = writeBuf([]byte{})
-		wb.byte('R')
-		wb.int32(8)
-		wb.int32(0)
-		n, err = client.Write([]byte(wb))
-		Debug("sent AuthenticationOk to client", wb, n, err)
-		wb = writeBuf([]byte{})
-		wb.byte('Z')
-		wb.int32(5)
-		wb.byte('I')
-		n, err = client.Write([]byte(wb))
-		Debug("sent ReadyForQuery to client", wb, n, err)
-	} else {
+	if rbi == 80877103 {
+		Debug("The client wants ssl, but we're going to say we don't support it", rbi)
 		client := m.Client
 		_, _ = client.Write([]byte{'N'})
+		readN(client, 1024)
+
 	}
+	/* The right order is this, but it isn't required
+	   sendAuthPlain(client)
+	   readN(client, 100)
+	*/
+	sendAuthOk(client)
+	sendParameter(client, "client_encoding", "UTF8")
+	sendParameter(client, "server_version", *server_version)
+	sendReady(client)
+	Debug("--------- END STARTUP for", connstr)
 	log.Println("client startup complete")
 }

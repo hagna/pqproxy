@@ -178,13 +178,14 @@ func Open(name string, m *Mitm) (_ driver.Conn, err error) {
 	cn.ssl(o, m)
 
 	cn.buf = bufio.NewReader(cn.c)
+
+	cn.startup(o)
 	if m != nil {
 		// wrap the server connection in Mitm
 		m.Conn = cn.c
 		cn.c = m
 		m.startup()
 	}
-	cn.startup(o)
 	// reset the deadline, in case one was set (see dial)
 	err = cn.c.SetDeadline(time.Time{})
 	return cn, err
@@ -781,6 +782,7 @@ func (cn *conn) startup(o values) {
 		switch t {
 		case 'K':
 		case 'S':
+			DebugDump(t, r)
 			cn.processParameterStatus(r)
 		case 'R':
 			cn.auth(r, o)

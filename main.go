@@ -11,8 +11,9 @@ import (
 	"os/exec"
 	"os/signal"
 
-	"database/sql"
 	"github.com/hagna/pqproxy/pq"
+	"database/sql"
+    //_ "github.com/mattn/go-sqlite3"
 )
 
 var dburl = flag.String("dburl", "", "url of database")
@@ -20,74 +21,12 @@ var port = flag.String("port", ":5432", "port on which to pose as server")
 var cmd = flag.String("cmd", "", "stdin of cmd gets the bytes to read and stdout gives the bytes to write to postgres server")
 var testquery = flag.String("t", "", "test query to try")
 
-type Mitm struct {
-	/*
-	   psql destination is the command line output of psql
-	   psql source is postgres server
-
-	   postgres source is psql client
-	   postgres destination is the postgres server
-	*/
-	name string
-	src  net.Conn
-	dst  net.Conn
-}
 
 func Usage() {
 	fmt.Printf("Usage: ./pqproxy [options] postgres://[user]:[pass]@[host][:port]/[database]\n\n")
 	flag.PrintDefaults()
 }
 
-/*
-// Write to dst src -> dst
-	if m.name == "psql" {
-		pq.Debug("This was sent by the postgres server and we will write it to the client")
-	} else {
-		pq.Debug("This was sent by the postgres client and we will write it to the postgres server")
-	}
-
-	// psql client send stuff to postgres server
-	if m.name == "postgres" && *cmd != "" {
-		res := shell(&b, "Write")
-		if len(res) != 0 {
-			n = len(b) // make the caller think we wrote it all
-			_, err = m.dst.Write(res)
-			pq.Debug("We wrote this instead though")
-			pq.DebugDump(res)
-			return
-		}
-	}
-	pq.DebugDump(b)
-	n, err = m.dst.Write(b)
-
-	pq.Debug("Write finished")
-	return
-}
-
-// Read from dst src <- dst
-func (m Mitm) Read(b []byte) (n int, err error) {
-	n, err = m.dst.Read(b)
-	f m.name == "psql" && *cmd != "" {
-		in := b[:n]
-		res := shell(&in, "Read")
-		if len(res) != 0 {
-			pq.Debug("replacing what we read from the client")
-			b = []byte{}
-			n = len(res)
-			b = res
-		}
-	}
-	if m.name == "psql" {
-		pq.Debug("We read this from the client")
-	} else {
-		pq.Debug("We read this from the server")
-	}
-	pq.DebugDump(b[:n])
-	pq.Debug("Read finished")
-
-	return
-}
-*/
 
 func main() {
 	flag.Usage = Usage

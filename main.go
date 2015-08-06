@@ -11,7 +11,7 @@ import (
 	"os/exec"
 	"os/signal"
 
-	"github.com/hagna/pqproxy/pq"
+	"github.com/hagna/pqproxy/internal/pq"
 	"database/sql"
     //_ "github.com/mattn/go-sqlite3"
 )

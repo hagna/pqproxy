@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+    _ "net/http/pprof"
+    "net/http"
 
 	"github.com/hagna/pqproxy/internal/pq"
 	"database/sql"
@@ -22,6 +24,7 @@ var dburl = flag.String("dburl", "", "url of database")
 var port = flag.String("port", ":5432", "port on which to pose as server")
 var cmd = flag.String("cmd", "", "stdin of cmd gets the bytes to read and stdout gives the bytes to write to postgres server")
 var testquery = flag.String("t", "", "test query to try")
+var pprof = flag.String("pprof", "", "turn on pprof by specifying an endpoint here like 127.0.0.1:6090")
 
 
 func Usage() {
@@ -33,6 +36,12 @@ func Usage() {
 func main() {
 	flag.Usage = Usage
 	flag.Parse()
+
+    if *pprof != "" {
+        go func() {
+            log.Println(http.ListenAndServe(*pprof, nil))
+        }()
+    }
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, os.Kill)

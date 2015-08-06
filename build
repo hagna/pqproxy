@@ -1,0 +1,5 @@
+#!/bin/bash
+set -x
+
+VERSION="1.$(git rev-list HEAD --count)$(date -u +.%Y%m%d.%H%M)"
+go build $* -ldflags "-X main.VERSION=${VERSION}"

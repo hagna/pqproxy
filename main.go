@@ -16,6 +16,8 @@ import (
     //_ "github.com/mattn/go-sqlite3"
 )
 
+var VERSION string
+
 var dburl = flag.String("dburl", "", "url of database")
 var port = flag.String("port", ":5432", "port on which to pose as server")
 var cmd = flag.String("cmd", "", "stdin of cmd gets the bytes to read and stdout gives the bytes to write to postgres server")
@@ -46,6 +48,11 @@ func main() {
 		fmt.Println("try --help")
 		return
 	}
+
+    if *dburl == "version" {
+        fmt.Println(VERSION)
+        return
+    }
 
 	p, err := url.Parse(*dburl)
 	if err != nil || p.Scheme == "" {

@@ -184,7 +184,10 @@ func Open(name string, m *Mitm) (_ driver.Conn, err error) {
 		// wrap the server connection in Mitm
 		m.Conn = cn.c
 		cn.c = m
-		m.startup()
+		err = m.startup()
+        if err != nil {
+            return nil, err
+        }
 	}
 	// reset the deadline, in case one was set (see dial)
 	err = cn.c.SetDeadline(time.Time{})

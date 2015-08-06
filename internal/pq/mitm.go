@@ -2,6 +2,7 @@ package pq
 
 import (
 	"bytes"
+    "crypto/tls"
 	"flag"
 	"fmt"
 	"log"
@@ -10,6 +11,8 @@ import (
 )
 
 var server_version = flag.String("sver", "10.0.0", "Version number to pass to the client")
+var cert = flag.String("cert", "", "Cert for ssl auth to client")
+var key = flag.String("key", "", "Key for ssl auth to client")
 
 // This is for intercepting writes to the postgres database and altering them in transit.
 type Mitm struct {
@@ -162,9 +165,27 @@ func sendParameter(client net.Conn, k, v string) {
 	}
 }
 
+
+func doTLS(client net.Conn, cert, key string) (net.Conn, error) {
+    certpem, err := tls.LoadX509KeyPair(cert, key)
+            if err != nil {
+                return nil, err
+            }
+    c := new(tls.Config)
+    c.Certificates = []tls.Certificate{certpem}
+    c.ClientAuth = tls.VerifyClientCertIfGiven
+    c.ServerName = "foobar.com"
+    tlsConn := tls.Server(client, c)
+    Debug("about to do TLS handshake")
+    if err = tlsConn.Handshake(); err != nil {
+        return nil, err
+    } 
+    return tlsConn, nil
+}
+
 // This is for making the cient think it is connected to a real postgres
 // server.
-func (m Mitm) startup() {
+func (m *Mitm) startup() error {
 	connstr := fmt.Sprintf("%s %s <-> %s %s", m.Client.RemoteAddr(), m.Client.LocalAddr(), m.Conn.LocalAddr(), m.Conn.RemoteAddr())
 	Debug("--------- BEGIN STARTUP for", connstr)
 	bc := [100]byte{}
@@ -174,10 +195,25 @@ func (m Mitm) startup() {
 	rbi := rb.int32()
 	rbi = rb.int32()
 	if rbi == 80877103 {
-		Debug("The client wants ssl, but we're going to say we don't support it", rbi)
 		client := m.Client
-		_, _ = client.Write([]byte{'N'})
-		readN(client, 1024)
+        if *cert != "" && *key != "" {
+            
+            _, err := client.Write([]byte{'S'})
+            if err != nil {
+                Debug("ERROR sending we support ssl")
+            }
+            Debug("Did the client respond to the S?")
+            m.Client, err = doTLS(client, *cert, *key)
+            if err != nil {
+                Debug("ERROR in doTLS", err)
+            }
+            readN(m.Client, 100)
+
+        } else {
+		    Debug("The client wants ssl, but we're going to say we don't support it", rbi)
+            _, _ = client.Write([]byte{'N'})
+            readN(client, 1024)
+        }
 
 	}
 	/* The right order is this, but it isn't required
@@ -190,4 +226,5 @@ func (m Mitm) startup() {
 	sendReady(client)
 	Debug("--------- END STARTUP for", connstr)
 	log.Println("client startup complete")
+    return nil
 }

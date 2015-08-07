@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"os/exec"
+    "encoding/binary"
 )
 
 var server_version = flag.String("sver", "10.0.0", "Version number to pass to the client")
@@ -21,18 +22,27 @@ type Mitm struct {
 	Cmdname  *string
 }
 
+const (
+    WRITESERVER = "ws"
+    READSERVER = "rs"
+    WRITECLIENT = "wc"
+    READCLIENT = "rc"
+)
+
 func (m Mitm) Write(b []byte) (n int, err error) {
 	Debug("WRITE")
-	if *m.Cmdname != "" {
-		res := m.shell(&b, "Write")
-		if len(res) != 0 {
-			n = len(b) // make the caller think we wrote it all
-			_, err = m.Conn.Write(res)
-			Debug("We wrote this instead though")
-			DebugDump(res)
-			return
-		}
-	}
+    if b[0] == 'Q' {
+        if *m.Cmdname != "" {
+            res := m.shell(&b, WRITESERVER)
+            if len(res) != 0 {
+                n = len(b) // make the caller think we wrote it all
+                _, err = m.Conn.Write(fixLen(res))
+                Debug("We wrote this instead though")
+                DebugDump(res)
+                return
+            }
+        }
+    }
 	n, err = m.Conn.Write(b)
 	DebugDump(b[:n])
 	return
@@ -146,7 +156,7 @@ func sendAuthOk(client net.Conn) {
 }
 
 func addParam(wb *writeBuf, k, v string) {
-	l := len(k) + len(v) + 2 + 4
+	l := len(k) + len(v) + 2 + 4  // the message looks like Byte1('S') Int32 String, so 4 is for Int32 and 2 is for 'S' and null terminated string
 	wb.int32(l)
 	wb.string(k)
 	wb.string(v)
@@ -163,6 +173,14 @@ func sendParameter(client net.Conn, k, v string) {
 		Debug("sent Parameter", k, v)
         DebugDump(wb)
 	}
+}
+
+// given a query message which is Byte1('Q') Int32 String fix the length (Int32) field, so the underlying script won't have to
+// http://www.postgresql.org/docs/9.2/static/protocol-message-formats.html
+func fixLen(fixme []byte) []byte {
+    l := (len(fixme) - 1)  // skip the Q in "Q\x00\x00\x01\x01SELECT..."
+    binary.BigEndian.PutUint32(fixme[1:], uint32(l))
+    return fixme
 }
 
 

@@ -37,7 +37,7 @@ func (m Mitm) Write(b []byte) (n int, err error) {
             if len(res) != 0 {
                 n = len(b) // make the caller think we wrote it all
                 _, err = m.Conn.Write(fixLen(res))
-                Debug("We wrote this instead though")
+                Debug("INTERCEPT")
                 DebugDump(res)
                 return
             }
@@ -61,7 +61,6 @@ func (m Mitm) Read(b []byte) (n int, err error) {
 
 func (m Mitm) shell(b *[]byte, name string) []byte {
 	cmd := exec.Command(*m.Cmdname, name)
-	Debug("shell", cmd)
 	cmd.Stdin = bytes.NewReader(*b)
 	res, err := cmd.CombinedOutput()
 	if err != nil {

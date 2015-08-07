@@ -15,7 +15,6 @@ import (
 
 	"github.com/hagna/pqproxy/internal/pq"
 	"database/sql"
-    //_ "github.com/mattn/go-sqlite3"
 )
 
 var VERSION string

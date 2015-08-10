@@ -28,13 +28,7 @@ var (
 	ErrInFailedTransaction = errors.New("pq: Could not complete operation in a failed transaction")
 )
 
-type Drv struct {
-	Baby string
-}
-
-func (d *Drv) More() string {
-	return "tell me more tell me more was it love at first sight?"
-}
+type Drv struct {}
 
 func (d *Drv) Open(name string) (driver.Conn, error) {
 	c, err := Open(name, nil)
@@ -179,7 +173,7 @@ func Open(name string, m *Mitm) (_ driver.Conn, err error) {
 
 	cn.buf = bufio.NewReader(cn.c)
 
-	cn.startup(o)
+	cn.startup(o, m)
 	if m != nil {
 		// wrap the server connection in Mitm
 		m.Conn = cn.c
@@ -756,7 +750,7 @@ func (cn *conn) ssl(o values, m *Mitm) {
 	cn.c = tls.Client(cn.c, &tlsConf)
 }
 
-func (cn *conn) startup(o values) {
+func (cn *conn) startup(o values, m *Mitm) {
 	w := cn.writeBuf(0)
 	w.int32(196608)
 	// Send the backend the name of the database we want to connect to, and the
@@ -779,6 +773,7 @@ func (cn *conn) startup(o values) {
 	}
 	w.string("")
 	cn.send(w)
+    
 
 	for {
 		t, r := cn.recv()
@@ -786,6 +781,7 @@ func (cn *conn) startup(o values) {
 		case 'K':
 		case 'S':
 			DebugDump(t, r)
+            m.queueParameter([]byte(*r))
 			cn.processParameterStatus(r)
 		case 'R':
 			cn.auth(r, o)

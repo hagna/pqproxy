@@ -20,6 +20,7 @@ type Mitm struct {
 	net.Conn          // this is the postgres server
 	Client   net.Conn // the postgres client psql or a webserver
 	Cmdname  *string
+    params [][]byte
 }
 
 const (
@@ -29,7 +30,7 @@ const (
     READCLIENT = "rc"
 )
 
-func (m Mitm) Write(b []byte) (n int, err error) {
+func (m *Mitm) Write(b []byte) (n int, err error) {
 	Debug("WRITE")
     if b[0] == 'Q' {
         if *m.Cmdname != "" {
@@ -48,7 +49,7 @@ func (m Mitm) Write(b []byte) (n int, err error) {
 	return
 }
 
-func (m Mitm) Read(b []byte) (n int, err error) {
+func (m *Mitm) Read(b []byte) (n int, err error) {
 	n, err = m.Conn.Read(b)
 	if err != nil {
 		Debug(err)
@@ -161,6 +162,32 @@ func addParam(wb *writeBuf, k, v string) {
 	wb.string(v)
 }
 
+func (m *Mitm) queueParameter(r []byte) {
+    if m == nil {
+        Debug("m is nil bailing though I was sent this:")
+        DebugDump(r)
+        return
+    }
+    DebugDump(r)
+    wb := writeBuf([]byte("S"))
+    wb.int32(len(r) + 4)
+    wb.bytes(r)
+    Debug("writebuf")
+    DebugDump(wb)
+    m.params = append(m.params, []byte(wb))
+    
+}
+
+func (m *Mitm) sendClientParams() {
+    for _, wb := range m.params {
+        DebugDump(wb)
+        _, err := m.Client.Write([]byte(wb))
+        if err != nil {
+            Debug(err)
+        }
+    }
+}
+
 func sendParameter(client net.Conn, k, v string) {
 	wb := writeBuf([]byte{})
 	wb.byte('S')
@@ -237,9 +264,10 @@ func (m *Mitm) startup() error {
 	   sendAuthPlain(client)
 	   readN(client, 100)
 	*/
-	sendAuthOk(client)
-	sendParameter(client, "client_encoding", "UTF8")
-	sendParameter(client, "server_version", *server_version)
+	sendAuthOk(m.Client)
+    m.sendClientParams()
+	//sendParameter(client, "client_encoding", "UTF8")
+	//sendParameter(client, "server_version", *server_version)
 	sendReady(client)
 	Debug("--------- END STARTUP for", connstr)
 	log.Println("client startup complete")

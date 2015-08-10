@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/url"
+    "time"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -87,8 +88,7 @@ func main() {
 		log.Println(db)
 		drv, ok := db.Driver().(*pq.Drv)
 		if ok {
-			log.Println("YES", drv)
-			log.Println(drv.More())
+			log.Println("YES we cast it to pq.Drv", drv)
 		}
 		log.Println("db is", db)
 		log.Println("running", *testquery)
@@ -158,7 +158,8 @@ func main() {
 					m.Close()
 				}(m)
 
-			default:
+    		default:
+                time.Sleep(100 * time.Millisecond)
 				//non-blocking
 			}
 

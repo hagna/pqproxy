@@ -29,8 +29,9 @@ var port = flag.String("port", ":5432", "port on which to pose as server")
 var cmd = flag.String("cmd", "", "stdin of cmd gets the bytes to read and stdout gives the bytes to write to postgres server")
 var testquery = flag.String("t", "", "test query to try")
 var pprof = flag.String("pprof", "", "turn on pprof by specifying an endpoint here like 127.0.0.1:6090")
-var savetraffic = flag.String("txlog", "", "log all the connection traffic")
+var savetraffic = flag.String("txlog", "dat", "log all the connection traffic that matches the refile in relog")
 var refile = flag.String("refile", "", "file containing line separated \"regexp\" \"replacement\"")
+var relog = flag.String("relog", "", "file containing the regexps to log")
 
 
 func Usage() {
@@ -69,13 +70,26 @@ func mkregexp(s []byte) ([]pq.Sub, error) {
             return nil, err
         }
         t_re := a[0]
-        t_sub := []byte(a[1])
+        // put hex(10) in for \n
+        a1 := strings.Replace(a[1], `\n`, "\n", -1)
+        t_sub := []byte(a1) 
         r := regexp.MustCompile(t_re)
         res = append(res, pq.Sub{S: t_re, Re: r, Repl: t_sub})
     }
     return res, nil
 }
 
+func mkrelog(s []byte) ([]*regexp.Regexp, error) {
+    res := []*regexp.Regexp{}
+    scanner := bufio.NewScanner(bytes.NewReader(s))
+    for scanner.Scan() {
+        line := scanner.Text()
+        t_re := string(line)
+        r := regexp.MustCompile(t_re)
+        res = append(res, r)
+    }
+    return res, nil
+}
 
 func main() {
 	flag.Usage = Usage
@@ -100,7 +114,20 @@ func main() {
         }
         fmt.Println("NOTICE: using these regsubs", resubs)
     }
-
+    var relogs []*regexp.Regexp
+    if *relog != "" {
+        s, err := ioutil.ReadFile(*relog)
+        if err != nil {
+            fmt.Println(err)
+            return
+        }
+        relogs, err = mkrelog(s)
+        if err != nil {
+            fmt.Println(err)
+            return
+        }
+        fmt.Println("NOTICE: using these regsubs", resubs)
+    }
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, os.Kill)
 	clientCh := make(chan net.Conn)
@@ -203,6 +230,7 @@ func main() {
 				m.Cmdname = cmd
 				m.Client = conn
                 m.Subs = resubs
+                m.Matchem = relogs
                 if *savetraffic != "" {
                     if err := m.OpenTxlog(*savetraffic); err != nil {
                         fmt.Println(err)

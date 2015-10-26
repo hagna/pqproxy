@@ -25,6 +25,7 @@ type Mitm struct {
     Subs []Sub
     params [][]byte
     txlog *os.File
+    Matchem []*regexp.Regexp
 }
 
 // This for holding the rewrite regular expressions
@@ -65,26 +66,45 @@ const (
 
 func (m *Mitm) Write(b []byte) (n int, err error) {
 	Debug("WRITE")
+    nb := b
     if len(m.Subs) > 0 {
+        var matched bool
         for _, sub := range m.Subs {
             if sub.Re.Match(b) {
-                nb := sub.Re.ReplaceAll(b, sub.Repl)
-                nb = fixLen(nb)
-                n = len(b)
-                _, err = m.Conn.Write(nb)
-                m.savetraffic(nb)
-                Debug("REGEXP INTERCEPT")
+                Debug("REGEXP INTERCEPT", sub.Re)
+                Debug("before")
                 DebugDump(nb)
-                return
+                nb = sub.Re.ReplaceAll(nb, sub.Repl)
+                matched = true
+                Debug("after")
+                DebugDump(nb)
             }
         }
+        if matched {
+            Debug("REGEXP INTERCEPT")
+            DebugDump(nb)
+            nb = fixLen(nb)
+            n = len(b)
+            _, err = m.Conn.Write(nb)
+            for _, match := range m.Matchem {
+                if match.Match(nb) {
+                    m.savetraffic(nb)
+                }
+            }
+            return
+        }
+
     } else if b[0] == 'Q' {
         if *m.Cmdname != "" {
             res := m.shell(&b, WRITESERVER)
             if len(res) != 0 {
                 n = len(b) // make the caller think we wrote it all
                 res = fixLen(res)
-                m.savetraffic(res)
+                for _, match := range m.Matchem {
+                    if match.Match(nb) {
+                        m.savetraffic(res)
+                    }
+                }
                 _, err = m.Conn.Write(res)
                 Debug("INTERCEPT")
                 DebugDump(res)
@@ -93,7 +113,11 @@ func (m *Mitm) Write(b []byte) (n int, err error) {
         }
     }
 	n, err = m.Conn.Write(b)
-    m.savetraffic(b)
+    for _, match := range m.Matchem {
+        if match.Match(nb) {
+            m.savetraffic(b)
+        }
+    }
 	DebugDump(b[:n])
 	return
 }
@@ -103,16 +127,33 @@ func (m *Mitm) Read(b []byte) (n int, err error) {
 	if err != nil {
 		Debug(err)
 	} else {
-		Debug("READ", n)
-        if *m.Cmdname != "" {
-            res := m.shell(&b, READSERVER)
-            if len(res) != 0 {
-                n = len(res)
-                b = res
-                Debug("READ INTERCEPT")
-                DebugDump(res)
-                m.savetraffic(b)
-                return
+        if false { // todo fix more lengths as listed here: http://www.postgresql.org/docs/9.2/static/protocol-message-formats.html len(m.Subs) > 0 {
+            for _, sub := range m.Subs {
+                if sub.Re.Match(b) {
+                    Debug("INTERCEPT READ REGSUB", sub, string(sub.Repl))
+                    Debug("Would have sent")
+                    DebugDump(b)
+                    nb := sub.Re.ReplaceAll(b[:n], sub.Repl)
+                    nb = fixLen(nb)
+                    n = len(nb)
+                    b = nb
+                    Debug("instead we sent")
+                    Debug("INTERCEPT READ REGSUB", string(sub.Repl))
+                    DebugDump(nb)
+                }
+            }
+        } else {
+            Debug("READ", n)
+            if *m.Cmdname != "" {
+                res := m.shell(&b, READSERVER)
+                if len(res) != 0 {
+                    n = len(res)
+                    b = res
+                    Debug("READ INTERCEPT")
+                    DebugDump(res)
+                    m.savetraffic(b)
+                    return
+                }
             }
         }
 	}

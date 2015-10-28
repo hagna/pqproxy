@@ -49,8 +49,13 @@ func (m *Mitm) CloseTxlog() {
 }
 
 func (m *Mitm) savetraffic(b []byte) {
+    Debug("savetraffic")
+    DebugDump(b)
+    c := make([]byte, len(b)+1)
+    copy(c, b)
+    c = append(c, '\n')
     if m.txlog != nil {
-        _, err := m.txlog.Write(b)
+        _, err := m.txlog.Write(c)
         if err != nil {
             Debug(err)
         }
@@ -86,11 +91,6 @@ func (m *Mitm) Write(b []byte) (n int, err error) {
             nb = fixLen(nb)
             n = len(b)
             _, err = m.Conn.Write(nb)
-            for _, match := range m.Matchem {
-                if match.Match(nb) {
-                    m.savetraffic(nb)
-                }
-            }
             return
         }
 
@@ -100,11 +100,6 @@ func (m *Mitm) Write(b []byte) (n int, err error) {
             if len(res) != 0 {
                 n = len(b) // make the caller think we wrote it all
                 res = fixLen(res)
-                for _, match := range m.Matchem {
-                    if match.Match(nb) {
-                        m.savetraffic(res)
-                    }
-                }
                 _, err = m.Conn.Write(res)
                 Debug("INTERCEPT")
                 DebugDump(res)
@@ -113,12 +108,12 @@ func (m *Mitm) Write(b []byte) (n int, err error) {
         }
     }
 	n, err = m.Conn.Write(b)
+	DebugDump(b[:n])
     for _, match := range m.Matchem {
-        if match.Match(nb) {
-            m.savetraffic(b)
+        for _, s := range match.FindAll(b[:n], -1) {
+            m.savetraffic(s)
         }
     }
-	DebugDump(b[:n])
 	return
 }
 
@@ -151,13 +146,18 @@ func (m *Mitm) Read(b []byte) (n int, err error) {
                     b = res
                     Debug("READ INTERCEPT")
                     DebugDump(res)
-                    m.savetraffic(b)
                     return
+                }
+            }
+            for _, match := range m.Matchem {
+                for _, s := range match.FindAll(b[:n], -1) {
+                    Debug("Matched this", s)
+                    m.savetraffic(s)
                 }
             }
         }
 	}
-    m.savetraffic(b)
+
 	DebugDump(b[:n])
 	return
 }
